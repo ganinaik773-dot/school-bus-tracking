@@ -1,19 +1,29 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Lock, User, Loader2 } from 'lucide-react';
+import { Shield, Lock, User, Loader2, AlertCircle } from 'lucide-react';
 
 export default function Login({ role, redirectTo }) {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(''); // NEW: Error state
   
   const defaultEmail = 
     role === 'Driver' ? 'raj.kumar@college.edu' : 
     role === 'Admin' ? 'admin@college.edu' : 'rahul@college.edu';
     
   const [email, setEmail] = useState(defaultEmail);
+  const [password, setPassword] = useState('hackathon123'); // NEW: Password state
   const navigate = useNavigate();
 
   const handleLogin = (e) => {
     e.preventDefault();
+    setError(''); // Clear previous errors
+    
+    // NEW: Password Validation Check
+    if (password !== 'hackathon123') {
+      setError('Invalid password. Please try again.');
+      return; // Stop the login process
+    }
+
     setLoading(true);
     
     setTimeout(() => {
@@ -43,9 +53,17 @@ export default function Login({ role, redirectTo }) {
         </div>
         
         <h2>{role} Portal</h2>
-        <p className="text-muted mb-6" style={{ marginBottom: '30px' }}>
+        <p className="text-muted mb-6" style={{ marginBottom: '20px' }}>
           Sign in to access your dashboard.
         </p>
+
+        {/* NEW: Error Message UI */}
+        {error && (
+          <div style={{ background: '#FEE2E2', color: '#B91C1C', padding: '12px', borderRadius: '8px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', fontWeight: '500', textAlign: 'left', border: '1px solid #FCA5A5' }}>
+            <AlertCircle size={18} />
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleLogin}>
           <div className="input-group">
@@ -68,7 +86,15 @@ export default function Login({ role, redirectTo }) {
             <label className="input-label">Password</label>
             <div style={{ position: 'relative' }}>
               <Lock size={18} style={{ position: 'absolute', left: '16px', top: '16px', color: '#94A3B8' }} />
-              <input type="password" required className="input-field" placeholder="••••••••" style={{ paddingLeft: '44px' }} defaultValue="hackathon123" />
+              <input 
+                type="password" 
+                required 
+                className="input-field" 
+                placeholder="••••••••" 
+                style={{ paddingLeft: '44px' }} 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
             </div>
           </div>
 
@@ -78,7 +104,7 @@ export default function Login({ role, redirectTo }) {
         </form>
         
         <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '20px' }}>
-          <i>Demo: Log in as "rahul" vs "amit" to track different buses.</i>
+          <i>Demo Password: <b>hackathon123</b></i>
         </p>
       </div>
     </div>
