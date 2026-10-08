@@ -30,7 +30,7 @@ export default function Login({ role, redirectTo }) {
       localStorage.setItem(`${role.toLowerCase()}_auth`, 'true');
 
       if (role === 'Student') {
-        const assignedBusId = email.toLowerCase().includes('rahul') ? 1 : 2;
+        const assignedBusId = (email.toLowerCase().includes('rahul') || email.toLowerCase().includes('neha')) ? 1 : 2;
         localStorage.setItem('student_bus_id', assignedBusId);
         
         const displayName = email.split('@')[0];

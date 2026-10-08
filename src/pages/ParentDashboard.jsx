@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import BusMap from '../components/BusMap';
-import { Bell, MapPin, Clock, Gauge, Navigation, User, Hash, Crosshair } from 'lucide-react';
+import { Bell, MapPin, Clock, Gauge, Navigation, User, Hash, Crosshair, Users } from 'lucide-react';
 
 export default function ParentDashboard() {
   const [bus, setBus] = useState(null);
@@ -32,6 +32,8 @@ export default function ParentDashboard() {
     return `${timeInMins} min`;
   };
 
+  const isFull = bus.seat_status === 'Full';
+
   return (
     <div className="container">
       <div className="card flex justify-between items-center mb-6" style={{ padding: '20px 30px' }}>
@@ -53,13 +55,6 @@ export default function ParentDashboard() {
         <div className="flex-col">
           <div style={{ position: 'relative' }}>
             <BusMap lat={bus.latitude} lng={bus.longitude} busNumber={bus.bus_number} />
-            
-            {bus.status === 'on_route' && (
-              <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 1000, background: 'rgba(0,0,0,0.8)', color: '#10B981', padding: '8px 12px', borderRadius: '8px', fontSize: '0.85rem', fontFamily: 'monospace', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ width: '8px', height: '8px', background: '#10B981', borderRadius: '50%', display: 'inline-block', animation: 'pulse 1.5s infinite' }}></span>
-                GPS: {bus.latitude.toFixed(6)}, {bus.longitude.toFixed(6)}
-              </div>
-            )}
           </div>
           
           <div className="grid grid-cols-4 card" style={{ marginTop: '0', padding: '24px' }}>
@@ -71,6 +66,22 @@ export default function ParentDashboard() {
         </div>
 
         <div className="flex-col" style={{ gap: '24px' }}>
+          
+          {/* UPDATED: View-Only Seat Status Card */}
+          <div className="card" style={{ border: isFull ? '2px solid #FCA5A5' : '2px solid #6EE7B7' }}>
+            <div className="flex justify-between items-center" style={{ paddingBottom: '8px' }}>
+              <h3 style={{ margin: 0, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Users size={20} color="var(--primary)"/> Live Seat Status
+              </h3>
+              <span className="badge" style={{ background: isFull ? '#FEE2E2' : '#D1FAE5', color: isFull ? '#B91C1C' : '#065F46', fontWeight: 'bold', fontSize: '1rem', padding: '8px 16px' }}>
+                {isFull ? '🔴 Bus is Full' : '🟢 Seats Available'}
+              </span>
+            </div>
+            <p className="text-muted" style={{ fontSize: '0.85rem', margin: '8px 0 0 0' }}>
+              Status is updated live by the bus driver.
+            </p>
+          </div>
+
           <div className="card" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', boxShadow: 'none' }}>
             <h3 style={{ borderBottom: '1px solid #E2E8F0', paddingBottom: '12px', marginBottom: '16px', color: 'var(--text)' }}>🚌 Trip Details</h3>
             
@@ -90,38 +101,6 @@ export default function ParentDashboard() {
                   <p style={{ fontWeight: '700', margin: 0 }}>{bus.driver_name}</p>
                 </div>
               </div>
-
-              <div className="flex items-center" style={{ gap: '12px' }}>
-                <div style={{ background: 'white', padding: '10px', borderRadius: '8px', boxShadow: 'var(--shadow-sm)' }}><Crosshair size={20} color="var(--primary)"/></div>
-                <div>
-                  <p className="text-muted" style={{ fontSize: '0.8rem', margin: 0 }}>Active Route</p>
-                  <p style={{ fontWeight: '700', margin: 0 }}>{bus.route_name}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="card" style={{ height: '100%' }}>
-            <h3 style={{ borderBottom: '1px solid #E2E8F0', paddingBottom: '12px', marginBottom: '20px' }}>📍 Recent Alerts</h3>
-            
-            <div className="flex-col" style={{ gap: '24px' }}>
-              <div className="flex" style={{ gap: '16px' }}>
-                <div style={{ background: '#E2E8F0', padding: '10px', borderRadius: '50%', height: 'fit-content' }}><Bell size={18} color="var(--text-muted)"/></div>
-                <div>
-                  <p style={{ fontWeight: '600', margin: 0 }}>Bus left college depot</p>
-                  <p className="text-muted" style={{ fontSize: '0.85rem', margin: 0 }}>7:00 AM</p>
-                </div>
-              </div>
-
-              {bus.status === 'on_route' && (
-                <div className="flex" style={{ gap: '16px' }}>
-                  <div style={{ background: 'var(--primary)', padding: '10px', borderRadius: '50%', height: 'fit-content', boxShadow: '0 4px 10px rgba(79, 70, 229, 0.4)' }}><Navigation size={18} color="white"/></div>
-                  <div>
-                    <p style={{ fontWeight: '600', margin: 0, color: 'var(--primary)' }}>Approaching Stop</p>
-                    <p className="text-muted" style={{ fontSize: '0.85rem', margin: 0 }}>Live Update</p>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>

@@ -1,181 +1,185 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Navigation, Play, Square, MapPin, User, Truck, Gauge, Radio, Activity } from 'lucide-react';
+import { Shield, MapPin, Play, Square, Navigation, Activity, Users } from 'lucide-react';
 
-// Backup simulation route
-const DEMO_ROUTE = [
-  { lat: 12.9716, lng: 77.5946 }, { lat: 12.9725, lng: 77.6000 },
-  { lat: 12.9750, lng: 77.6050 }, { lat: 12.9784, lng: 77.6408 }
+// Mock coordinates for the "Simulate" button to make the map move during your pitch
+const MOCK_ROUTE = [
+  { lat: 12.9716, lng: 77.5946, speed: 20 },
+  { lat: 12.9725, lng: 77.5955, speed: 35 },
+  { lat: 12.9738, lng: 77.5968, speed: 45 },
+  { lat: 12.9750, lng: 77.5980, speed: 30 },
+  { lat: 12.9765, lng: 77.5995, speed: 0 }
 ];
 
 export default function DriverDashboard() {
-  const [bus, setBus] = useState(null);
-  const [trackingMode, setTrackingMode] = useState('none'); // 'none', 'simulated', 'gps'
-  const [step, setStep] = useState(0);
-  const [watchId, setWatchId] = useState(null);
-  const [currentCoords, setCurrentCoords] = useState(null);
-  const [currentSpeed, setCurrentSpeed] = useState(0);
+  const [tracking, setTracking] = useState(false);
+  const [location, setLocation] = useState({ lat: 12.9716, lng: 77.5946, speed: 0 });
+  const [activeMode, setActiveMode] = useState(null); // 'real' or 'sim'
   
-  const BUS_ID = 1;
+  const watchId = useRef(null);
+  const simInterval = useRef(null);
 
-  // Fetch Driver & Bus Details on Load
+  // Stop everything if the component unmounts
   useEffect(() => {
-    const fetchBusDetails = async () => {
-      const { data } = await supabase.from('buses').select('*').eq('id', BUS_ID).single();
-      setBus(data);
-    };
-    fetchBusDetails();
+    return () => stopTracking();
   }, []);
 
-  // Real GPS Tracking Logic
-  const startRealGPS = () => {
-    if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser');
-      return;
+  const updateDatabase = async (lat, lng, speed, status) => {
+    setLocation({ lat, lng, speed });
+    const { error } = await supabase
+      .from('buses')
+      .update({ latitude: lat, longitude: lng, speed: speed, status: status })
+      .eq('id', 1); // Updating Bus B-102
+      
+    if (error) console.error('Error updating GPS:', error);
+  };
+
+  // --- SEAT AVAILABILITY FUNCTION ---
+  const handleSeatUpdate = async (status) => {
+    const { error } = await supabase
+      .from('buses')
+      .update({ seat_status: status })
+      .eq('id', 1); 
+      
+    if (error) {
+      console.error("Error updating seat status:", error);
+    } else {
+      // Small visual feedback for the driver
+      alert(`Status successfully updated to: ${status}`);
     }
+  };
 
-    setTrackingMode('gps');
+  // --- GPS TRACKING FUNCTIONS ---
+  const startRealGPS = () => {
+    if (!navigator.geolocation) return alert('GPS not supported on this device.');
     
-    const id = navigator.geolocation.watchPosition(
-      async (position) => {
-        const { latitude, longitude, speed } = position.coords;
-        const speedKmh = speed ? (speed * 3.6) : 0; 
-
-        setCurrentCoords({ latitude, longitude });
-        setCurrentSpeed(speedKmh);
-
-        await supabase.from('buses').update({
-          latitude,
-          longitude,
-          speed: speedKmh,
-          status: 'on_route',
-          updated_at: new Date().toISOString()
-        }).eq('id', BUS_ID);
+    setTracking(true);
+    setActiveMode('real');
+    
+    watchId.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const { latitude, longitude, speed } = pos.coords;
+        // speed is in m/s, convert to km/h (multiply by 3.6). If null, fallback to 25.
+        const kmhSpeed = speed ? speed * 3.6 : 25; 
+        updateDatabase(latitude, longitude, kmhSpeed, 'on_route');
       },
-      (error) => {
-        console.error("GPS Error:", error);
-        alert("Please enable location permissions in your browser.");
-        stopTracking();
-      },
+      (err) => console.error(err),
       { enableHighAccuracy: true, maximumAge: 0 }
     );
-    
-    setWatchId(id);
   };
 
-  // Simulated Tracking Logic (Backup Demo)
-  useEffect(() => {
-    let interval;
-    if (trackingMode === 'simulated' && step < DEMO_ROUTE.length) {
-      interval = setInterval(async () => {
-        const nextPos = DEMO_ROUTE[step];
-        const simulatedSpeed = 35 + Math.random() * 10;
-        
-        setCurrentCoords({ latitude: nextPos.lat, longitude: nextPos.lng });
-        setCurrentSpeed(simulatedSpeed);
-        
-        await supabase.from('buses').update({
-          latitude: nextPos.lat,
-          longitude: nextPos.lng,
-          speed: simulatedSpeed,
-          status: 'on_route',
-          updated_at: new Date().toISOString()
-        }).eq('id', BUS_ID);
+  const startSimulation = () => {
+    setTracking(true);
+    setActiveMode('sim');
+    let step = 0;
+    
+    // Jump to the first coordinate immediately
+    updateDatabase(MOCK_ROUTE[0].lat, MOCK_ROUTE[0].lng, MOCK_ROUTE[0].speed, 'on_route');
 
-        setStep((prev) => prev + 1);
-      }, 3000);
-    } else if (trackingMode === 'simulated' && step >= DEMO_ROUTE.length) {
-      stopTracking();
-    }
-    return () => clearInterval(interval);
-  }, [trackingMode, step]);
+    // Move the bus every 3 seconds
+    simInterval.current = setInterval(() => {
+      step++;
+      if (step >= MOCK_ROUTE.length) step = 0; // Loop back to start
+      updateDatabase(MOCK_ROUTE[step].lat, MOCK_ROUTE[step].lng, MOCK_ROUTE[step].speed, 'on_route');
+    }, 3000);
+  };
 
   const stopTracking = () => {
-    if (watchId) navigator.geolocation.clearWatch(watchId);
-    setTrackingMode('none');
-    setStep(0);
-    setWatchId(null);
-    setCurrentCoords(null);
-    setCurrentSpeed(0);
-    supabase.from('buses').update({ status: 'offline', speed: 0 }).eq('id', BUS_ID);
+    if (watchId.current) navigator.geolocation.clearWatch(watchId.current);
+    if (simInterval.current) clearInterval(simInterval.current);
+    
+    setTracking(false);
+    setActiveMode(null);
+    updateDatabase(location.lat, location.lng, 0, 'offline');
   };
 
-  if (!bus) return <div className="container flex justify-center mt-10"><h3>Loading Terminal...</h3></div>;
-
   return (
-    <div className="container" style={{ maxWidth: '500px', padding: '20px' }}>
+    <div className="container" style={{ maxWidth: '600px', paddingBottom: '40px' }}>
       
-      {/* Driver Profile Header */}
-      <div className="card flex justify-between items-center mb-6" style={{ background: 'var(--primary)', color: 'white', border: 'none' }}>
-        <div className="flex items-center" style={{ gap: '16px' }}>
-          <div style={{ width: '50px', height: '50px', borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <User size={24} color="white" />
+      {/* Header Profile Section */}
+      <div className="card flex justify-between items-center mb-6" style={{ padding: '20px 30px' }}>
+        <div className="flex items-center" style={{ gap: '20px' }}>
+          <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: 'var(--success)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: 'bold' }}>
+            <Shield size={32} />
           </div>
           <div>
-            <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'white' }}>{bus.driver_name}</h2>
-            <p style={{ margin: 0, opacity: 0.8, fontSize: '0.9rem' }}>Duty Active</p>
+            <h2 style={{ margin: 0 }}>Driver Terminal</h2>
+            <p className="text-muted" style={{ margin: 0, marginTop: '4px' }}>Assigned Bus: <b>B-102</b></p>
           </div>
-        </div>
-        <div className="flex-col items-end" style={{ gap: '4px' }}>
-          <span style={{ background: 'white', color: 'var(--primary)', padding: '4px 10px', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Truck size={14} /> {bus.bus_number}
-          </span>
-          <span style={{ fontSize: '0.8rem', opacity: 0.9 }}>{bus.route_name}</span>
         </div>
       </div>
 
-      <div className="card text-center flex-col items-center mb-6">
-        {/* Main Action Area */}
-        {trackingMode === 'none' ? (
-          <div className="flex-col" style={{ width: '100%', gap: '15px' }}>
-            <div style={{ padding: '20px', background: '#F8FAFC', borderRadius: '12px', marginBottom: '10px' }}>
-              <Radio size={32} color="var(--text-muted)" style={{ marginBottom: '10px' }} />
-              <h3 style={{ margin: 0, color: 'var(--text)' }}>Terminal Ready</h3>
-              <p className="text-muted" style={{ fontSize: '0.9rem', marginTop: '4px' }}>Awaiting trip start command.</p>
-            </div>
+      {/* Main GPS Control Panel */}
+      <div className="card" style={{ marginBottom: '24px' }}>
+        <div className="flex justify-between items-center" style={{ borderBottom: '1px solid #E2E8F0', paddingBottom: '16px', marginBottom: '20px' }}>
+          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Navigation size={24} color="var(--primary)"/> Route Controls
+          </h3>
+          <span className="badge" style={{ background: tracking ? '#D1FAE5' : '#FEE2E2', color: tracking ? '#065F46' : '#B91C1C', fontWeight: 'bold' }}>
+            {tracking ? '🟢 BROADCASTING' : '🔴 OFFLINE'}
+          </span>
+        </div>
 
-            <button className="btn btn-success" onClick={startRealGPS} style={{ padding: '24px', fontSize: '1.2rem', width: '100%', borderRadius: '16px' }}>
-              <Navigation size={24} /> START REAL GPS TRACKING
+        {/* Telemetry Display */}
+        <div className="grid grid-cols-2" style={{ gap: '16px', marginBottom: '24px' }}>
+          <div style={{ background: '#F1F5F9', padding: '16px', borderRadius: '12px' }}>
+            <p className="text-muted" style={{ fontSize: '0.85rem', margin: '0 0 4px 0' }}>Current Speed</p>
+            <p style={{ fontSize: '1.5rem', fontWeight: '700', margin: 0, color: 'var(--primary)' }}>
+              {Math.round(location.speed)} <span style={{ fontSize: '1rem', color: '#64748B' }}>km/h</span>
+            </p>
+          </div>
+          <div style={{ background: '#F1F5F9', padding: '16px', borderRadius: '12px' }}>
+            <p className="text-muted" style={{ fontSize: '0.85rem', margin: '0 0 4px 0' }}>GPS Status</p>
+            <p style={{ fontSize: '1.2rem', fontWeight: '700', margin: 0, color: tracking ? 'var(--success)' : '#64748B', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Activity size={20} /> {tracking ? 'Active' : 'Standby'}
+            </p>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        {!tracking ? (
+          <div className="flex-col" style={{ gap: '12px' }}>
+            <button onClick={startRealGPS} className="btn" style={{ width: '100%', padding: '16px', fontSize: '1.1rem', background: 'var(--primary)' }}>
+              <MapPin size={20} style={{ marginRight: '8px' }}/> START REAL GPS TRACKING
             </button>
-            
-            <div style={{ position: 'relative', margin: '15px 0' }}>
-              <hr style={{ borderTop: '1px solid #E2E8F0' }} />
-              <span style={{ position: 'absolute', top: '-10px', background: 'white', padding: '0 10px', left: '42%', color: 'var(--text-muted)', fontSize: '0.9rem' }}>OR</span>
-            </div>
-
-            <button className="btn btn-outline" onClick={() => { setTrackingMode('simulated'); setStep(0); }} style={{ padding: '16px', borderRadius: '12px' }}>
-              <Play size={20} /> Start Simulated Demo
+            <button onClick={startSimulation} className="btn" style={{ width: '100%', padding: '16px', fontSize: '1.1rem', background: '#F59E0B', color: 'white', border: 'none' }}>
+              <Play size={20} style={{ marginRight: '8px' }}/> Start Simulated Demo
             </button>
           </div>
         ) : (
-          <div className="flex-col" style={{ width: '100%' }}>
-            <div style={{ padding: '20px', background: '#D1FAE5', borderRadius: '12px', marginBottom: '20px', border: '1px solid #34D399' }}>
-              <Activity size={32} color="#059669" style={{ marginBottom: '10px', animation: 'pulse 2s infinite' }} />
-              <h3 style={{ margin: 0, color: '#065F46' }}>Broadcasting Location</h3>
-              <p style={{ color: '#047857', fontSize: '0.9rem', marginTop: '4px' }}>Parents can now see your bus.</p>
-            </div>
-
-            <button className="btn btn-danger" onClick={stopTracking} style={{ padding: '24px', fontSize: '1.2rem', width: '100%', borderRadius: '16px' }}>
-              <Square size={24} /> END TRIP
-            </button>
-          </div>
+          <button onClick={stopTracking} className="btn" style={{ width: '100%', padding: '16px', fontSize: '1.1rem', background: '#EF4444', color: 'white', border: 'none' }}>
+            <Square size={20} style={{ marginRight: '8px' }}/> END TRIP & STOP TRACKING
+          </button>
         )}
       </div>
 
-      {/* Live Telemetry Grid */}
-      <div className="grid grid-cols-2" style={{ gap: '16px' }}>
-        <div className="card flex-col items-center text-center" style={{ padding: '16px' }}>
-          <Gauge size={24} color="var(--primary)" style={{ marginBottom: '8px' }}/>
-          <h2 style={{ margin: 0 }}>{Math.round(currentSpeed)} <span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>km/h</span></h2>
-          <span className="text-muted text-sm">Current Speed</span>
+      {/* NEW: Driver Seat Control Panel */}
+      <div className="card" style={{ border: '2px solid #E2E8F0' }}>
+        <div className="flex justify-between items-center" style={{ borderBottom: '1px solid #E2E8F0', paddingBottom: '12px', marginBottom: '16px' }}>
+          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Users size={20} color="var(--primary)"/> Update Seat Capacity
+          </h3>
         </div>
         
-        <div className="card flex-col items-center text-center" style={{ padding: '16px' }}>
-          <MapPin size={24} color={trackingMode !== 'none' ? "var(--success)" : "var(--text-muted)"} style={{ marginBottom: '8px' }}/>
-          <h3 style={{ margin: 0, fontSize: '1.1rem' }}>
-            {currentCoords ? `${currentCoords.latitude.toFixed(4)}, ${currentCoords.longitude.toFixed(4)}` : 'Waiting...'}
-          </h3>
-          <span className="text-muted text-sm">Coordinates</span>
+        <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '16px' }}>
+          Notify waiting students about the current capacity of the bus in real-time.
+        </p>
+
+        <div className="flex" style={{ gap: '12px' }}>
+          <button 
+            onClick={() => handleSeatUpdate('Available')}
+            className="btn" 
+            style={{ flex: 1, padding: '14px', fontSize: '1rem', background: '#10B981', color: 'white', border: 'none' }}
+          >
+            🟢 Set: Seats Available
+          </button>
+          <button 
+            onClick={() => handleSeatUpdate('Full')}
+            className="btn" 
+            style={{ flex: 1, padding: '14px', fontSize: '1rem', background: '#EF4444', color: 'white', border: 'none' }}
+          >
+            🔴 Set: Bus is Full
+          </button>
         </div>
       </div>
 
